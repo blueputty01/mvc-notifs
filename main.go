@@ -22,6 +22,56 @@ var maxDistanceFlag = flag.Float64("max-distance", 100.0, "Maximum distance in m
 var centerLatFlag = flag.Float64("lat", 40, "Center latitude for distance filtering")
 var centerLonFlag = flag.Float64("lon", 74, "Center longitude for distance filtering")
 
+func filterLocationsByDistance(locations []mvc.Appointment, center utils.Point, maxDistance float64) []mvc.Appointment {
+	filtered := make([]mvc.Appointment, 0)
+	for _, loc := range locations {
+		distance := utils.Haversine(
+			center,
+			utils.Point{Lat: loc.Data.Lat, Lon: loc.Data.Long},
+		)
+		// fmt.Printf("Location: %s Point: %+v Distance: %f\n", loc.Data.Name, point, distance)
+		if distance <= *maxDistanceFlag {
+			filtered = append(filtered, loc)
+		} else {
+			fmt.Printf("Skipping location: %s Distance: %f\n", loc.Data.Name, distance)
+		}
+	}
+
+	return filtered
+}
+
+func filterLocationsByName(locations []mvc.Appointment, ignoredSubstrs []string) []mvc.Appointment {
+	filtered := make([]mvc.Appointment, 0)
+	for _, loc := range locations {
+		ignore := false
+		for _, ignoreSubstr := range ignoredSubstrs {
+			if ignoreSubstr != "" && strings.Contains(loc.Data.Name, ignoreSubstr) {
+				fmt.Printf("Ignoring location: %s\n", loc.Data.Name)
+				ignore = true
+				break
+			}
+		}
+		if !ignore {
+			filtered = append(filtered, loc)
+		}
+	}
+	return filtered
+}
+
+func filterLocationsByDateRange(locations []mvc.Appointment, startDate, endDate time.Time) []mvc.Appointment {
+	filtered := make([]mvc.Appointment, 0)
+	withinRange := make([]mvc.Appointment, 0)
+
+	for _, loc := range filtered {
+		if !loc.NextAvailable.IsZero() {
+			if loc.NextAvailable.After(startDate) && loc.NextAvailable.Before(endDate) {
+				withinRange = append(withinRange, loc)
+			}
+		}
+	}
+	return withinRange
+}
+
 func main() {
 	flag.Parse()
 
@@ -72,48 +122,22 @@ func main() {
 
 	// filter by distance from lat long
 	center := utils.Point{Lat: *centerLatFlag, Lon: *centerLonFlag}
-
-	filtered := make([]mvc.Appointment, 0)
-	for _, loc := range locations {
-		distance := utils.Haversine(
-			center,
-			utils.Point{Lat: loc.Data.Lat, Lon: loc.Data.Long},
-		)
-		// fmt.Printf("Location: %s Point: %+v Distance: %f\n", loc.Data.Name, point, distance)
-		if distance <= *maxDistanceFlag {
-			ignore := false
-			for _, ignoreSubstr := range ignoreLocationSubstrs {
-				if ignoreSubstr != "" && strings.Contains(loc.Data.Name, ignoreSubstr) {
-					fmt.Printf("Ignoring location: %s\n", loc.Data.Name)
-					ignore = true
-					break
-				}
-			}
-			if !ignore {
-				filtered = append(filtered, loc)
-			}
-		} else {
-			fmt.Printf("Skipping location: %s Distance: %f\n", loc.Data.Name, distance)
-		}
-	}
-
-	withinRange := make([]mvc.Appointment, 0)
-
-	for _, loc := range filtered {
-		if !loc.NextAvailable.IsZero() {
-			if loc.NextAvailable.After(startDate) && loc.NextAvailable.Before(endDate) {
-				withinRange = append(withinRange, loc)
-			}
-		}
-	}
-
-	if len(withinRange) == 0 {
+	filtered := filterLocationsByDistance(locations, center, *maxDistanceFlag)
+	filtered = filterLocationsByName(filtered, ignoreLocationSubstrs)
+	filtered = filterLocationsByDateRange(filtered, startDate, endDate)
+	if len(filtered) == 0 {
 		fmt.Println("No available appointments found within criteria")
 		return
 	}
 
-	message := fmt.Sprintf("Next available appointment at %s is %s", withinRange[0].Data.Name, withinRange[0].NextAvailable.String())
-	fmt.Printf("Sending %s to %s\n", message, *destinationNumberFlag)
+	messages := make([]string, 0)
+	for _, loc := range filtered {
+		messages = append(messages, fmt.Sprintf("Location: %s, Next Available: %s", loc.Data.Name, loc.NextAvailable.String()))
+	}
+	fmt.Println("Available appointments found:")
+	fmt.Println(strings.Join(messages, "\n"))
+
+	message := strings.Join(messages, "\n")
 
 	err = notifClient.SendNotification(
 		*destinationNumberFlag,
