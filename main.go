@@ -120,7 +120,6 @@ func main() {
 		panic(err)
 	}
 
-	// filter by distance from lat long
 	center := utils.Point{Lat: *centerLatFlag, Lon: *centerLonFlag}
 	filtered := filterLocationsByDistance(locations, center, *maxDistanceFlag)
 	filtered = filterLocationsByName(filtered, ignoreLocationSubstrs)
