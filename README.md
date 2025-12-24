@@ -1,4 +1,4 @@
-# MVC Scraper
+# DMV New Appointment Notifications
 
 Scheduling DMV appointments can be hard, especially if you didn't plan weeks in advance. This tool helps by automatically checking for available appointments at New Jersey Motor Vehicle Commission (MVC) locations and notifying you via a phone call when an appointment becomes available that meets your criteria.
 
