@@ -34,3 +34,11 @@ go run main.go \
 ## Architecture
 
 Uses a modular design with scraper and notification clients to facilitate testing and extensibility.
+
+## Build Information
+
+This project is developed on Apple Silicone but is deployed on on my Linux AMD64 architecture machine. To build the binary, use:
+
+```bash
+env GOOS=linux GOARCH=amd64 go build
+```
