@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"mvc-notif/mvc"
 	"mvc-notif/notif"
+	"mvc-notif/persistence"
 	"mvc-notif/utils"
 	"os"
 	"strings"
@@ -16,7 +17,8 @@ const inputTimeFormat = "01/02/2006"
 var urlFlag = flag.String("url", "https://telegov.njportal.com/njmvc/AppointmentWizard/12", "The URL of the portal")
 var startDateFlag = flag.String("start", "", "The start date to filter appointments (MM/DD/YYYY)")
 var endDateFlag = flag.String("end", "", "The end date to filter appointments (MM/DD/YYYY)")
-var destinationNumberFlag = flag.String("to", "", "The destination phone number for notifications")
+var destinationNumberFlag = flag.String("call", "", "The destination phone number for notifications")
+var destinationEmailFlag = flag.String("email", "", "The destination email address for notifications")
 var ignoredLocationsFlag = flag.String("ignore", "", "Comma-separated list of location names to ignore")
 var maxDistanceFlag = flag.Float64("max-distance", 100.0, "Maximum distance in miles from the center point")
 var centerLatFlag = flag.Float64("lat", 40, "Center latitude for distance filtering")
@@ -30,7 +32,7 @@ func filterLocationsByDistance(locations []mvc.Appointment, center utils.Point, 
 			utils.Point{Lat: loc.Data.Lat, Lon: loc.Data.Long},
 		)
 		// fmt.Printf("Location: %s Point: %+v Distance: %f\n", loc.Data.Name, point, distance)
-		if distance <= *maxDistanceFlag {
+		if distance <= maxDistance {
 			filtered = append(filtered, loc)
 		} else {
 			fmt.Printf("Skipping location: %s Distance: %f\n", loc.Data.Name, distance)
@@ -59,10 +61,9 @@ func filterLocationsByName(locations []mvc.Appointment, ignoredSubstrs []string)
 }
 
 func filterLocationsByDateRange(locations []mvc.Appointment, startDate, endDate time.Time) []mvc.Appointment {
-	filtered := make([]mvc.Appointment, 0)
 	withinRange := make([]mvc.Appointment, 0)
 
-	for _, loc := range filtered {
+	for _, loc := range locations {
 		if !loc.NextAvailable.IsZero() {
 			if loc.NextAvailable.After(startDate) && loc.NextAvailable.Before(endDate) {
 				withinRange = append(withinRange, loc)
@@ -109,11 +110,40 @@ func main() {
 	if twilioOriginNumber == "" {
 		panic("TWILIO_ORIGIN_NUMBER environment variable not set")
 	}
+	smtpHost := os.Getenv("SMTP_HOST")
+	if smtpHost == "" {
+		panic("SMTP_HOST environment variable not set")
+	}
+	smtpPort := os.Getenv("SMTP_PORT")
+	if smtpPort == "" {
+		panic("SMTP_PORT environment variable not set")
+	}
+	smtpUser := os.Getenv("SMTP_USER")
+	if smtpUser == "" {
+		panic("SMTP_USER environment variable not set")
+	}
+	smtpPassword := os.Getenv("SMTP_PASSWORD")
+	if smtpPassword == "" {
+		panic("SMTP_PASSWORD environment variable not set")
+	}
+	smtpFrom := os.Getenv("SMTP_FROM")
+	if smtpFrom == "" {
+		panic("SMTP_FROM environment variable not set")
+	}
 	notifClient := notif.NewClient(
 		twilioAccountSid,
 		twilioAuthToken,
 		twilioOriginNumber,
+		smtpHost,
+		smtpPort,
+		smtpUser,
+		smtpPassword,
+		smtpFrom,
 	)
+	persistenceClient, err := persistence.NewClient("persistence.json")
+	if err != nil {
+		panic(err)
+	}
 
 	locations, err := mvcClient.GetNextAvailable()
 	if err != nil {
@@ -129,17 +159,32 @@ func main() {
 		return
 	}
 
-	messages := make([]string, 0)
+	changesToCheck := make(persistence.NotificationsByLocation)
 	for _, loc := range filtered {
-		messages = append(messages, fmt.Sprintf("Location: %s, Next Available: %s", loc.Data.Name, loc.NextAvailable.String()))
+		changesToCheck[loc.Data.Name] = []persistence.Notification{
+			{LocationTime: loc.NextAvailable},
+		}
 	}
-	fmt.Println("Available appointments found:")
+	changes, err := persistenceClient.DiffAndSaveData(changesToCheck)
+	if err != nil {
+		panic(err)
+	}
+
+	messages := make([]string, 0)
+	for location, notifications := range changes {
+		for _, notification := range notifications {
+			message := fmt.Sprintf("Appointment available at %s on %s", location, notification.LocationTime.Format("01/02/2006 15:04"))
+			messages = append(messages, message)
+		}
+	}
+	fmt.Println("Available new appointments found:")
 	fmt.Println(strings.Join(messages, "\n"))
 
 	message := strings.Join(messages, "\n")
 
 	err = notifClient.SendNotification(
 		*destinationNumberFlag,
+		*destinationEmailFlag,
 		message,
 	)
 
