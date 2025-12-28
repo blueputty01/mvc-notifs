@@ -2,6 +2,8 @@
 
 Scheduling DMV appointments can be hard, especially if you didn't plan weeks in advance. This tool helps by automatically checking for available appointments at New Jersey Motor Vehicle Commission (MVC) locations and notifying you via a phone call when an appointment becomes available that meets your criteria.
 
+Fully automating the system involves solving a CAPTCHA challenge, which is brittle. Thus this system focuses solely on notification.
+
 ## Features
 
 - Fetches next available appointments from the NJ MVC portal (TeleGov)
@@ -10,6 +12,7 @@ Scheduling DMV appointments can be hard, especially if you didn't plan weeks in 
   - Location names (ignore list)
   - Date range
 - Sends voice call via Twilio when appointments are found
+- Avoids duplicate notifications using local persistence
 
 ## Usage
 
@@ -25,15 +28,13 @@ go run main.go \
     -lon -74.815
 ```
 
-## Environment Variables
-
-- `TWILIO_ACCOUNT_SID`
-- `TWILIO_AUTH_TOKEN`
-- `TWILIO_ORIGIN_NUMBER`
+See `.env.example` for required environment variables.
 
 ## Architecture
 
 Uses a modular design with scraper and notification clients to facilitate testing and extensibility.
+
+Built without AI agents to strengthen my understanding of Go.
 
 ## Build Information
 
